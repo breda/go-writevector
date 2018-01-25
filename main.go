@@ -20,7 +20,9 @@ type WriteVector struct {
 }
 
 func New(sync bool) *WriteVector {
-	return &WriteVector{}
+	return &WriteVector{
+		sync: sync,
+	}
 }
 
 func (wv *WriteVector) Add(path, data string, append_mode bool) error {
@@ -38,26 +40,26 @@ func (wv *WriteVector) Write() error {
 	writes_len := len(wv.writes)
 
 	for i := 0; i < writes_len; i++ {
-		if err := do_write(wv.writes[i], wv.sync); err != nil {
+		err := do_write(wv.writes[i], wv.sync) 
+		if err != nil {
 			return err
 		}
 	}
-	
 	return nil
 }
 
 func do_write(we writeEntry, sync bool) error {
-	flag := os.O_WRONLY
+	flag := os.O_WRONLY | os.O_CREATE
 	
 	if we.append {
 		flag = flag | os.O_APPEND
 	}
-
+	
 	if sync {
 		flag = flag | os.O_SYNC
 	}
 	
-	file, err := os.OpenFile(we.path, flag, 0)
+	file, err := os.OpenFile(we.path, flag, 0664)
 	if err != nil {
 		return err
 	}
