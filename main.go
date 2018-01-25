@@ -2,18 +2,12 @@ package writevector
 
 import (
 	"os"
-	"fmt"
+	"io"
 )
-
-type writeEntry struct {
-	path string
-	data string
-	append bool
-}
 
 type WriteVector struct {
 	// Data entries
-	writes []writeEntry
+	writers []io.Writer
 	
 	// wether to sync or not
 	sync bool
@@ -25,62 +19,67 @@ func New(sync bool) *WriteVector {
 	}
 }
 
-func (wv *WriteVector) Add(path, data string, append_mode bool) error {
-	we := writeEntry{
-		path: path,
-		data: data,
-		append: append_mode,
-	}
-
-	wv.writes = append(wv.writes, we)
-	return nil
+func (wv *WriteVector) AddWriter(writer io.Writer) {
+	wv.writers = append(wv.writers, writer)
 }
 
-func (wv *WriteVector) Write() error {
-	writes_len := len(wv.writes)
-
-	for i := 0; i < writes_len; i++ {
-		err := do_write(wv.writes[i], wv.sync) 
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func do_write(we writeEntry, sync bool) error {
-	flag := os.O_WRONLY | os.O_CREATE
-	
-	if we.append {
-		flag = flag | os.O_APPEND
-	}
-	
-	if sync {
-		flag = flag | os.O_SYNC
-	}
-	
-	file, err := os.OpenFile(we.path, flag, 0664)
+func (wv *WriteVector) Add(path string, append_mode bool) error {
+	writer, err := create_writer(wv, path, append_mode)
 	if err != nil {
 		return err
 	}
 
-	written, err := file.WriteString(we.data);
-	if  err != nil { 
-		return err
+	wv.writers = append(wv.writers, writer)
+	return nil
+}
+
+func (wv *WriteVector) WriteString(data string) (int, error) {
+	written, err := wv.Write([]byte(data))
+	if err != nil {
+		return 0, nil
+	}
+	
+	return written, nil
+}
+
+func (wv *WriteVector) Write(data []byte) (int, error) {
+	written := 0
+	for i := 0; i < len(wv.writers); i++ {
+		n, err := wv.writers[i].Write(data)
+		if err != nil {
+			return 0, nil
+		}
+
+		written += n
 	}
 
-	if written != len(we.data) {
-		return fmt.Errorf("could not write data to file (data=%s, file path=%s)", we.data, we.path)	
+	return written, nil
+}
+
+func create_writer(wv *WriteVector, filepath string, append bool) (io.Writer, error) {
+	flag := os.O_WRONLY | os.O_CREATE
+	
+	if append {
+		flag = flag | os.O_APPEND
 	}
-		
-	return nil	
+	
+	if wv.sync {
+		flag = flag | os.O_SYNC
+	}
+	
+	file, err := os.OpenFile(filepath, flag, 0664)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
 }
 
 func main() {
 	wv := New(false)
 	
-	wv.Add("tests/testfile1.txt", "Hola amigo 1", false)
-	wv.Add("tests/testfile2.txt", "Hola amigo 2", false)
+	wv.Add("tests/testfile1.txt", false)
+	wv.Add("tests/testfile2.txt", false)
 
-	wv.Write()
+	wv.WriteString("Holaaaa")
 }
